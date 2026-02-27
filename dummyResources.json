@@ -1,18 +1,10 @@
 [
-    {
-        "name": "dev_1",
-        "state": "Up"
-    },
-    {
-        "name": "dev_2",
-        "state": "Up"
-    },
-    {
-        "name": "dev_3",
-        "state": "Up"
-    },
-    {
-        "name": "dev_4",
-        "state": "Up"
-    }
+  {
+    "resourceName": "nvidia.com/gpu",
+    "count": 4
+  },
+  {
+    "resourceName": "example.com/nic",
+    "count": 2
+  }
 ]

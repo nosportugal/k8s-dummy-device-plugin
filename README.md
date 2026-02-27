@@ -1,53 +1,119 @@
 # k8s-dummy-device-plugin
 
-K8s Dummy Device Plugin *(for testing purpose only)*
+A Kubernetes [Device Plugin](https://kubernetes.io/docs/concepts/cluster-administration/device-plugins/) for **testing purposes only**.
 
-This is a plugin that's used for testing and exploring [Kubernetes Device Plugins](https://kubernetes.io/docs/concepts/cluster-administration/device-plugins/).
+It fakes arbitrary device resources so you can test Kubernetes device scheduling without real hardware. You configure a list of resource names (e.g. `nvidia.com/gpu`, `example.com/fpga`) and a quantity for each. The plugin registers them all with the kubelet, and when a Pod requests those resources, it "allocates" them by injecting environment variables into the container.
 
-In essence, it works as a kind of echo device. One specifies the (albeit pretend) devices in a JSON file, and the plugin operates on those, and allocates the devices to containers that request them -- it does this by setting those devices into environment variables in those containers.
+## Configuration
 
-### Update 27 January 2021
-creates `nvidia.com/gpu` device for testing. 
-`examples/daemonset.yml` contains example deployment with config map
-Specify number of GPUs in config map
-Set label `fake-device-plugin: 'true'` on nodes to activate
+Resources are defined in a JSON file (default: `./dummyResources.json`):
+
+```json
+[
+  {
+    "resourceName": "nvidia.com/gpu",
+    "count": 4
+  },
+  {
+    "resourceName": "example.com/nic",
+    "count": 2
+  }
+]
+```
+
+Each entry creates a separate device plugin server that registers the given `resourceName` with the kubelet and advertises `count` devices.
+
+### Allocation
+
+When a container is allocated devices, the plugin sets an environment variable whose name is derived from the resource name:
+
+| Resource Name     | Environment Variable           | Example Value  |
+|-------------------|--------------------------------|----------------|
+| `nvidia.com/gpu`  | `DUMMY_DEVICES_NVIDIA_COM_GPU` | `dev-0,dev-1`  |
+| `example.com/nic` | `DUMMY_DEVICES_EXAMPLE_COM_NIC`| `dev-0`        |
+
+Device IDs are auto-generated as `dev-0`, `dev-1`, ..., `dev-N`.
+
 ## Building
 
-This plugin is built by simply building the `dummy.go` file. Make sure you have Go installed and build with:
+Make sure you have Go installed, then:
 
 ```
 go build -o k8s-dummy-device-plugin dummy.go
 ```
 
-Dependencies are managed with [Go modules](https://go.dev/ref/mod).
-
-## CI/CD
-
-This project uses GitHub Actions for CI/CD. The workflow builds the Docker image and pushes it to [GitHub Container Registry (GHCR)](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry). Authentication uses the built-in `GITHUB_TOKEN` — no additional configuration is required.
-
-## Example Usage (when deployed as DaemonSet)
-
-In the `./examples/` directory there is an example DaemonSet that will deploy the device plugin on each node in your cluster.
+Or build the Docker image:
 
 ```
-kubectl create -f ./examples/daemonset.yml
+docker build -t k8s-dummy-device-plugin .
 ```
 
-Then create the sample pod, available as `./sample_pod.yaml` in this repository.
+### Command-line Flags
+
+| Flag       | Default                 | Description                    |
+|------------|-------------------------|--------------------------------|
+| `-config`  | `./dummyResources.json` | Path to the configuration file |
+
+## Deployment (DaemonSet)
+
+Deploy as a DaemonSet so the plugin runs on every node (or a subset of nodes):
 
 ```
-$ kubectl create -f ./sample_pod.yaml
+kubectl apply -f ./examples/daemonset.yml
 ```
 
-You may then see that the "devices" were created as environment variables.
+The example DaemonSet includes a ConfigMap with sample resources. Edit the ConfigMap to match your needs.
+
+Then create a Pod that requests the fake resources:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dummy-pod
+spec:
+  containers:
+    - name: demo-container
+      image: busybox
+      command: ["sleep", "3600"]
+      resources:
+        limits:
+          nvidia.com/gpu: 2
+          example.com/nic: 1
+```
+
+Verify the devices were allocated:
 
 ```
-$ kubectl exec -it dummy-pod -- /bin/sh -c "printenv" | grep DUMMY_DEVICES
-DUMMY_DEVICES=dev_3,dev_4
+$ kubectl exec dummy-pod -- printenv | grep DUMMY_DEVICES
+DUMMY_DEVICES_NVIDIA_COM_GPU=dev-0,dev-1
+DUMMY_DEVICES_EXAMPLE_COM_NIC=dev-0
 ```
 
-## Configuration
+## Testing
 
-Configuration of the "pretend" devices are in the `./dummyResources.json` file.
+End-to-end tests use [kind](https://kind.sigs.k8s.io/) to spin up a local Kubernetes cluster, deploy the plugin, and verify device allocation.
 
-More configuration to come.
+### Prerequisites
+
+- Docker
+- [kind](https://kind.sigs.k8s.io/)
+- kubectl
+
+### Running locally
+
+```
+./test/e2e.sh
+```
+
+The script automatically creates a kind cluster, runs the tests, and tears the cluster down on exit (even on failure).
+
+### CI/CD
+
+The E2E tests run automatically on pull requests and pushes to `main`/`master` via the GitHub Actions workflow at `.github/workflows/e2e-test.yml`.
+
+The project also uses GitHub Actions to build and push Docker images to [GitHub Container Registry (GHCR)](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry) via `.github/workflows/build-and-push.yml`.
+
+## License
+
+See [LICENSE](LICENSE).

@@ -4,8 +4,10 @@ metadata:
   name: dummy-pod
 spec:
   containers:
-    - name: demo-container-1
-      image: karlherler/pause 
+    - name: demo-container
+      image: busybox
+      command: ["sleep", "3600"]
       resources:
         limits:
-          dummy/dummyDev: 2
+          nvidia.com/gpu: 2
+          example.com/nic: 1
