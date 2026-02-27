@@ -23,15 +23,7 @@ Dependencies are managed with [Go modules](https://go.dev/ref/mod).
 
 ## CI/CD
 
-This project uses GitHub Actions for CI/CD. The workflow builds the Docker image and pushes it to JFrog Artifactory using OIDC authentication.
-
-The following repository variables must be configured in GitHub:
-
-| Variable | Description |
-|---|---|
-| `JF_URL` | JFrog platform URL |
-| `JF_OIDC_PROVIDER_NAME` | OIDC provider name configured in JFrog |
-| `JF_DOCKER_REGISTRY` | Docker registry hostname in Artifactory |
+This project uses GitHub Actions for CI/CD. The workflow builds the Docker image and pushes it to [GitHub Container Registry (GHCR)](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry). Authentication uses the built-in `GITHUB_TOKEN` — no additional configuration is required.
 
 ## Example Usage (when deployed as DaemonSet)
 
