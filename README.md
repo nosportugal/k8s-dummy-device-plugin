@@ -13,13 +13,25 @@ Specify number of GPUs in config map
 Set label `fake-device-plugin: 'true'` on nodes to activate
 ## Building
 
-This plugin is built by simply building the `dummy.go` file. Make sure your `$GOPATH` is set correctly and build with:
+This plugin is built by simply building the `dummy.go` file. Make sure you have Go installed and build with:
 
 ```
-go build dummy.go
+go build -o k8s-dummy-device-plugin dummy.go
 ```
 
-Dependencies are managed and versioned internally with [dep](https://github.com/golang/dep).
+Dependencies are managed with [Go modules](https://go.dev/ref/mod).
+
+## CI/CD
+
+This project uses GitHub Actions for CI/CD. The workflow builds the Docker image and pushes it to JFrog Artifactory using OIDC authentication.
+
+The following repository variables must be configured in GitHub:
+
+| Variable | Description |
+|---|---|
+| `JF_URL` | JFrog platform URL |
+| `JF_OIDC_PROVIDER_NAME` | OIDC provider name configured in JFrog |
+| `JF_DOCKER_REGISTRY` | Docker registry hostname in Artifactory |
 
 ## Example Usage (when deployed as DaemonSet)
 

@@ -1,11 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/golang/glog"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/signal"
@@ -13,14 +12,16 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/net/context"
+	"github.com/golang/glog"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
-	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
 // DummyDeviceManager manages our dummy devices
 type DummyDeviceManager struct {
+	pluginapi.UnimplementedDevicePluginServer
 	devices map[string]*pluginapi.Device
 	socket  string
 	server  *grpc.Server
@@ -38,7 +39,7 @@ func (ddm *DummyDeviceManager) Init() error {
 //		 and health state update
 func (ddm *DummyDeviceManager) discoverDummyResources() error {
 	glog.Info("Discovering dummy devices")
-	raw, err := ioutil.ReadFile("./dummyResources.json")
+	raw, err := os.ReadFile("./dummyResources.json")
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
@@ -77,13 +78,12 @@ func (ddm *DummyDeviceManager) Start() error {
 	go ddm.server.Serve(sock)
 
 	// Wait for server to start by launching a blocking connection
-	conn, err := grpc.Dial(ddm.socket, grpc.WithInsecure(), grpc.WithBlock(),
-		grpc.WithTimeout(5*time.Second),
-		grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
-			return net.DialTimeout("unix", addr, timeout)
-		}),
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(ctx, "unix://"+ddm.socket,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
 	)
-
 	if err != nil {
 		return err
 	}
@@ -126,14 +126,13 @@ func (ddm *DummyDeviceManager) cleanup() error {
 
 // Register with kubelet
 func Register() error {
-	conn, err := grpc.Dial(pluginapi.KubeletSocket, grpc.WithInsecure(),
-		grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
-			return net.DialTimeout("unix", addr, timeout)
-		}))
-	defer conn.Close()
+	conn, err := grpc.Dial("unix://"+pluginapi.KubeletSocket,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		return fmt.Errorf("device-plugin: cannot connect to kubelet service: %v", err)
 	}
+	defer conn.Close()
 	client := pluginapi.NewRegistrationClient(conn)
 	reqt := &pluginapi.RegisterRequest{
 		Version: pluginapi.Version,
@@ -186,15 +185,15 @@ func (ddm *DummyDeviceManager) Allocate(ctx context.Context, reqs *pluginapi.All
 	glog.Info("Allocate")
 	responses := pluginapi.AllocateResponse{}
 	for _, req := range reqs.ContainerRequests {
-		for _, id := range req.DevicesIDs {
+		for _, id := range req.DevicesIds {
 			if _, ok := ddm.devices[id]; !ok {
 				glog.Errorf("Can't allocate interface %s", id)
 				return nil, fmt.Errorf("invalid allocation request: unknown device: %s", id)
 			}
 		}
-		glog.Info("Allocated interfaces ", req.DevicesIDs)
+		glog.Info("Allocated interfaces ", req.DevicesIds)
 		response := pluginapi.ContainerAllocateResponse{
-			Envs: map[string]string{"DUMMY_DEVICES": strings.Join(req.DevicesIDs, ",")},
+			Envs: map[string]string{"DUMMY_DEVICES": strings.Join(req.DevicesIds, ",")},
 		}
 		responses.ContainerResponses = append(responses.ContainerResponses, &response)
 	}
@@ -211,6 +210,11 @@ func (ddm *DummyDeviceManager) GetDevicePluginOptions(context.Context, *pluginap
 // such as reseting the device before making devices available to the container
 func (ddm *DummyDeviceManager) PreStartContainer(context.Context, *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
 	return &pluginapi.PreStartContainerResponse{}, nil
+}
+
+// GetPreferredAllocation returns the preferred allocation from a list of available ones
+func (ddm *DummyDeviceManager) GetPreferredAllocation(context.Context, *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
+	return &pluginapi.PreferredAllocationResponse{}, nil
 }
 
 func main() {
