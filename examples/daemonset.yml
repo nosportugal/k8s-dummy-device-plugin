@@ -29,7 +29,7 @@ spec:
         operator: Exists
       hostNetwork: true
       containers:
-      - image: yehiyam/fake-device-plugin:0.0.2
+      - image: ghcr.io/nosportugal/k8s-dummy-device-plugin:latest
         name: fake-device-plugin
         # args: ["-log-level", "debug"]
         # --------- Doug removed this section.
