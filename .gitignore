@@ -11,8 +11,5 @@ k8s-dummy-device-plugin
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-# Project-local glide cache, RE: https://github.com/Masterminds/glide/issues/736
-.glide/
-
 # Dependency directories
 vendor/
