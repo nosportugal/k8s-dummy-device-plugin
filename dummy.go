@@ -15,6 +15,7 @@ import (
 
 	"github.com/golang/glog"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
@@ -89,17 +90,23 @@ func (ddm *DummyDeviceManager) Start() error {
 
 	go ddm.server.Serve(sock)
 
-	// Wait for server to start by launching a blocking connection.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	conn, err := grpc.DialContext(ctx, "unix://"+ddm.socket,
+	// Wait for server to start by launching a connection and waiting for it to become ready.
+	conn, err := grpc.NewClient("unix://"+ddm.socket,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
 		return err
 	}
-	conn.Close()
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn.Connect()
+	for conn.GetState() != connectivity.Ready {
+		if !conn.WaitForStateChange(ctx, conn.GetState()) {
+			return fmt.Errorf("timeout waiting for device plugin server to start at %s", ddm.socket)
+		}
+	}
 
 	go ddm.healthcheck()
 
@@ -136,7 +143,7 @@ func (ddm *DummyDeviceManager) cleanup() error {
 
 // Register registers this device plugin with the kubelet for its resource name.
 func (ddm *DummyDeviceManager) Register() error {
-	conn, err := grpc.Dial("unix://"+pluginapi.KubeletSocket,
+	conn, err := grpc.NewClient("unix://"+pluginapi.KubeletSocket,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
@@ -172,19 +179,18 @@ func (ddm *DummyDeviceManager) ListAndWatch(empty *pluginapi.Empty, stream plugi
 		glog.Errorf("[%s] Failed to send ListAndWatch response: %v", ddm.resourceName, err)
 	}
 
-	for {
-		select {
-		case d := <-ddm.health:
-			d.Health = pluginapi.Unhealthy
-			resp := new(pluginapi.ListAndWatchResponse)
-			for _, dev := range ddm.devices {
-				resp.Devices = append(resp.Devices, dev)
-			}
-			if err := stream.Send(resp); err != nil {
-				glog.Errorf("[%s] Failed to send ListAndWatch response: %v", ddm.resourceName, err)
-			}
+	for d := range ddm.health {
+		d.Health = pluginapi.Unhealthy
+		resp := new(pluginapi.ListAndWatchResponse)
+		for _, dev := range ddm.devices {
+			resp.Devices = append(resp.Devices, dev)
+		}
+		if err := stream.Send(resp); err != nil {
+			glog.Errorf("[%s] Failed to send ListAndWatch response: %v", ddm.resourceName, err)
 		}
 	}
+
+	return fmt.Errorf("[%s] health channel closed unexpectedly", ddm.resourceName)
 }
 
 // Allocate handles device allocation requests from the kubelet.
