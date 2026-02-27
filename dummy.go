@@ -36,7 +36,8 @@ func (ddm *DummyDeviceManager) Init() error {
 
 // discoverDummyResources populates device list
 // TODO: We currently only do this once at init, need to change it to do monitoring
-//		 and health state update
+//
+//	and health state update
 func (ddm *DummyDeviceManager) discoverDummyResources() error {
 	glog.Info("Discovering dummy devices")
 	raw, err := os.ReadFile("./dummyResources.json")
@@ -200,7 +201,7 @@ func (ddm *DummyDeviceManager) Allocate(ctx context.Context, reqs *pluginapi.All
 	return &responses, nil
 }
 
-// GetDevicePluginOptions returns options to be communicated with Device Manager 
+// GetDevicePluginOptions returns options to be communicated with Device Manager
 func (ddm *DummyDeviceManager) GetDevicePluginOptions(context.Context, *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
 	return &pluginapi.DevicePluginOptions{}, nil
 }
@@ -224,8 +225,8 @@ func main() {
 	// Create new dummy device manager
 	ddm := &DummyDeviceManager{
 		devices: make(map[string]*pluginapi.Device),
-		socket: pluginapi.DevicePluginPath + "dummy.sock",
-		health: make(chan *pluginapi.Device),
+		socket:  pluginapi.DevicePluginPath + "dummy.sock",
+		health:  make(chan *pluginapi.Device),
 	}
 
 	// Populate device list
