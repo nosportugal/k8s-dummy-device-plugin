@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/golang/glog v1.2.5
-	google.golang.org/grpc v1.79.1
+	google.golang.org/grpc v1.79.3
 	k8s.io/kubelet v0.35.2
 )
 
